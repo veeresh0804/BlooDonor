@@ -1,6 +1,6 @@
-# bloodonor
+# BlooDonor
 
-A new Flutter project.
+An emergency blood donor matching platform.
 
 ## Getting Started
 
