@@ -4,7 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../config/theme/app_theme.dart';
 import '../logic/hospital_provider.dart';
 
-class LeadsScreen extends StatelessWidget {
+class LeadsScreen extends StatefulWidget {
   final String requestId;
   final String bloodGroup;
 
@@ -15,11 +15,25 @@ class LeadsScreen extends StatelessWidget {
   });
 
   @override
+  State<LeadsScreen> createState() => _LeadsScreenState();
+}
+
+class _LeadsScreenState extends State<LeadsScreen> {
+  late final Future<List<Map<String, dynamic>>> _leadsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetch once; building must never start a new request.
+    _leadsFuture = context.read<HospitalProvider>().getLeads(widget.requestId);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text('Leads — $bloodGroup')),
+      appBar: AppBar(title: Text('Leads — ${widget.bloodGroup}')),
       body: FutureBuilder<List<Map<String, dynamic>>>(
-        future: _loadLeads(context),
+        future: _leadsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
@@ -67,10 +81,6 @@ class LeadsScreen extends StatelessWidget {
         },
       ),
     );
-  }
-
-  Future<List<Map<String, dynamic>>> _loadLeads(BuildContext context) async {
-    return await context.read<HospitalProvider>().getLeads(requestId);
   }
 }
 

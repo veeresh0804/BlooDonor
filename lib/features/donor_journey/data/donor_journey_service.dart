@@ -3,7 +3,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../shared/models/enums.dart';
 
 class DonorJourneyService {
-  final SupabaseClient _client = Supabase.instance.client;
+  late final SupabaseClient _client = Supabase.instance.client;
 
   /// Submit a lead for an unregistered donor
   Future<void> submitLead({
@@ -25,7 +25,10 @@ class DonorJourneyService {
     }
   }
 
-  /// Send SMS via Edge Function
+  /// Send SMS via Edge Function.
+  /// NOTE: intentionally unwired — no UI calls this until the send-sms
+  /// function stops being a mock (Twilio send is commented out there).
+  /// Reconnect the journey-screen family button only after that lands.
   Future<void> sendSms({required String to, required String body}) async {
     try {
       await _client.functions.invoke(
@@ -42,26 +45,35 @@ class DonorJourneyService {
     required String requestId,
     required String donorId,
     required DonorResponseStatus status,
-    bool healthCheckPassed = false,
-    bool isCooldownOverride = false,
+    // Nullable = "don't touch". Passing false would overwrite a true value
+    // set by an earlier transition (e.g. accepted -> on_the_way clearing
+    // health_check_passed), so callers omit what they don't own.
+    bool? healthCheckPassed,
+    bool? isCooldownOverride,
   }) async {
     try {
-      // Update the donor response record
+      // Update the donor response record. Timestamps are stamped only on
+      // entry into their state and flags only when explicitly passed —
+      // never nulled by later transitions (that used to erase history).
+      final update = <String, dynamic>{'status': status.name};
+      if (healthCheckPassed != null) {
+        update['health_check_passed'] = healthCheckPassed;
+      }
+      if (isCooldownOverride != null) {
+        update['is_cooldown_override'] = isCooldownOverride;
+      }
+      if (status == DonorResponseStatus.accepted) {
+        update['accepted_at'] = DateTime.now().toIso8601String();
+      } else if (status == DonorResponseStatus.arrived) {
+        update['arrived_at'] = DateTime.now().toIso8601String();
+      }
       await _client
           .from('donor_responses')
-          .update({
-            'status': status.name,
-            'health_check_passed': healthCheckPassed,
-            'is_cooldown_override': isCooldownOverride,
-            'accepted_at': status == DonorResponseStatus.accepted
-                ? DateTime.now().toIso8601String()
-                : null,
-            'arrived_at': status == DonorResponseStatus.arrived
-                ? DateTime.now().toIso8601String()
-                : null,
-          })
+          .update(update)
           .eq('request_id', requestId)
-          .eq('donor_id', donorId);
+          .eq('donor_id', donorId)
+          .select('id')
+          .single();
     } catch (e) {
       throw ServerException('Failed to update donor response: $e');
     }

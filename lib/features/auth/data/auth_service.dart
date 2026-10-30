@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/errors/app_exception.dart' as app;
 import '../../../shared/models/enums.dart';
+import '../../../shared/models/parse_utils.dart';
 
 class AuthService {
   final SupabaseClient _client = Supabase.instance.client;
@@ -61,12 +62,24 @@ class AuthService {
     }
   }
 
-  /// Get user role from the users table
-  Future<UserRole?> getUserRole() async {
-    try {
-      final userId = currentUser?.id;
-      if (userId == null) return null;
+  /// Phone of the signed-in user in +E.164 form (Supabase stores it without '+').
+  String? get currentPhone {
+    final raw = currentUser?.phone;
+    if (raw == null || raw.isEmpty) return null;
+    return raw.startsWith('+') ? raw : '+$raw';
+  }
 
+  /// Get user role from the users table.
+  ///
+  /// Returns null ONLY when the user has no profile row yet. Network/DB errors
+  /// and unrecognised role values throw, so callers can offer a retry instead
+  /// of treating a transient failure as "no profile" (which used to bounce
+  /// signed-in users back to the login screen).
+  Future<UserRole?> getUserRole() async {
+    final userId = currentUser?.id;
+    if (userId == null) return null;
+
+    try {
       final response = await _client
           .from('users')
           .select('role')
@@ -74,9 +87,15 @@ class AuthService {
           .maybeSingle();
 
       if (response == null) return null;
-      return UserRole.values.byName(response['role']);
+      final role = tryParseEnum(UserRole.values, response['role']);
+      if (role == null) {
+        throw app.AuthException('Unrecognised account role');
+      }
+      return role;
+    } on app.AuthException {
+      rethrow;
     } catch (e) {
-      return null;
+      throw app.ServerException('Failed to load your account: $e');
     }
   }
 

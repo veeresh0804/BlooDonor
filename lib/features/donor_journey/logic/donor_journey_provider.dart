@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import '../../../shared/models/donor_profile.dart';
 import '../../../shared/models/enums.dart';
 import '../data/donor_journey_service.dart';
 
 class DonorJourneyProvider extends ChangeNotifier {
-  final DonorJourneyService _service = DonorJourneyService();
+  DonorJourneyProvider({DonorJourneyService? service})
+    : _service = service ?? DonorJourneyService();
+
+  final DonorJourneyService _service;
 
   DonorResponseStatus _currentStatus = DonorResponseStatus.accepted;
   bool _isLoading = false;
@@ -40,25 +42,6 @@ class DonorJourneyProvider extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
       return false;
-    }
-  }
-
-  /// Notify family via SMS
-  Future<void> notifyFamily({
-    required DonorProfile donor,
-    required String hospitalName,
-  }) async {
-    final contactPhone = donor.emergencyContactPhone;
-    if (contactPhone == null) return;
-
-    final message =
-        "${donor.emergencyContactName} is going to donate blood at $hospitalName. Proud of me!";
-
-    try {
-      await _service.sendSms(to: contactPhone, body: message);
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
     }
   }
 
@@ -115,12 +98,14 @@ class DonorJourneyProvider extends ChangeNotifier {
   }
 
   /// Update journey status
-  Future<void> updateStatus({
+  Future<bool> updateStatus({
     required String requestId,
     required String donorId,
     required DonorResponseStatus status,
   }) async {
-    _currentStatus = status;
+    if (_isLoading) return false;
+    _isLoading = true;
+    _error = null;
     notifyListeners();
     try {
       await _service.updateResponseStatus(
@@ -128,8 +113,13 @@ class DonorJourneyProvider extends ChangeNotifier {
         donorId: donorId,
         status: status,
       );
+      _currentStatus = status;
+      return true;
     } catch (e) {
       _error = e.toString();
+      return false;
+    } finally {
+      _isLoading = false;
       notifyListeners();
     }
   }

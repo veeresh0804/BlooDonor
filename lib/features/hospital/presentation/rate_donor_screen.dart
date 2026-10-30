@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../config/theme/app_theme.dart';
+import '../logic/hospital_provider.dart';
 
 class RateDonorScreen extends StatefulWidget {
   final String donorId;
@@ -214,6 +216,7 @@ class _RateDonorScreenState extends State<RateDonorScreen> {
       await Supabase.instance.client.from('donor_ratings').insert({
         'donor_id': widget.donorId,
         'request_id': widget.requestId,
+        'hospital_id': context.read<HospitalProvider>().profile?.id,
         'stars': _stars,
         'rating_score': _stars,
         'punctual': _punctual,

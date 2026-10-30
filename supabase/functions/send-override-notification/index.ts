@@ -1,75 +1,71 @@
-// Supabase Edge Function: Send Cooldown Override Notification
+// Supabase Edge Function: Send Cooldown Override Notification (FCM HTTP v1)
 // Sends a special notification to a donor who is in their cooldown period.
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isDeadToken, sendFcm } from "../_shared/fcm.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const FCM_SERVER_KEY = Deno.env.get("FCM_SERVER_KEY")!;
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 
 serve(async (req) => {
   try {
     const { request_id, donor_id, blood_group, hospital_name, patient_story, cooldown_days_remaining } =
       await req.json();
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Get donor's FCM token
-    const { data: donor, error: donorError } = await supabase
-      .from("users")
-      .select("fcm_token")
-      .eq("id", (
-        await supabase.from("donor_profiles").select("user_id").eq("id", donor_id).single()
-      ).data.user_id)
-      .single();
-
-    if (donorError || !donor?.fcm_token) {
-      return new Response(
-        JSON.stringify({ error: "Donor FCM token not found" }),
-        { status: 404 }
-      );
+    if (!request_id || !donor_id) {
+      return json({ error: "request_id and donor_id are required" }, 400);
     }
 
-    const fcmToken = donor.fcm_token;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Send FCM notification
-    const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `key=${FCM_SERVER_KEY}`,
+    // Previously an unguarded `.data.user_id` chain (500 on unknown donor). Now a clean 404.
+    const { data: profile } = await supabase
+      .from("donor_profiles")
+      .select("user_id")
+      .eq("id", donor_id)
+      .maybeSingle();
+    if (!profile) return json({ error: "Donor not found" }, 404);
+
+    const { data: user } = await supabase
+      .from("users")
+      .select("fcm_token")
+      .eq("id", profile.user_id)
+      .maybeSingle();
+    if (!user?.fcm_token) return json({ error: "Donor FCM token not found" }, 404);
+
+    const result = await sendFcm({
+      token: user.fcm_token,
+      priority: "high",
+      title: `RARE BLOOD SOS: ${blood_group} Needed`,
+      body:
+        "This is an urgent override request. You are in a cooldown period, but your blood type is critically needed.",
+      androidChannelId: "emergency_channel",
+      sound: "emergency",
+      data: {
+        type: "cooldown_override_request",
+        request_id,
+        blood_group,
+        hospital_name,
+        patient_story: patient_story ?? "",
+        cooldown_days_remaining,
       },
-      body: JSON.stringify({
-        to: fcmToken,
-        priority: "high",
-        notification: {
-          title: `RARE BLOOD SOS: ${blood_group} Needed`,
-          body: `This is an urgent override request. You are in a cooldown period, but your blood type is critically needed.`,
-          sound: "emergency",
-          channel_id: "emergency_channel",
-        },
-        data: {
-          type: "cooldown_override_request",
-          request_id,
-          blood_group,
-          hospital_name,
-          patient_story: patient_story || "",
-          cooldown_days_remaining: String(cooldown_days_remaining),
-        },
-      }),
     });
 
-    const fcmResult = await fcmResponse.json();
-
-    return new Response(
-      JSON.stringify({ success: true, fcm: fcmResult }),
-      { headers: { "Content-Type": "application/json" } }
-    );
+    if (!result.ok) {
+      if (isDeadToken(result)) {
+        await supabase.from("users").update({ fcm_token: null }).eq("id", profile.user_id);
+      }
+      return json({ success: false, fcm_error: result.errorCode, fcm: result.raw }, 502);
+    }
+    return json({ success: true, fcm: result.raw });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500 }
-    );
+    return json({ error: (error as Error).message }, 500);
   }
 });

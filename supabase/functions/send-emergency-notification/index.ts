@@ -1,87 +1,76 @@
-// Supabase Edge Function: Send Emergency Notification
-// This function sends FCM push notifications to matched donors
+// Supabase Edge Function: Send Emergency Notification (FCM HTTP v1)
+// Called by the handle_new_blood_request trigger, one call per matched donor.
+// Payload: { request_id, donor_id, blood_group, hospital_name, patient_story, distance_km }
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { isDeadToken, sendFcm } from "../_shared/fcm.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const FCM_SERVER_KEY = Deno.env.get("FCM_SERVER_KEY")!;
+
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 
 serve(async (req) => {
   try {
     const { request_id, donor_id, blood_group, hospital_name, patient_story, distance_km } =
       await req.json();
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-
-    // Get donor's FCM token
-    const { data: donor, error: donorError } = await supabase
-      .from("donor_profiles")
-      .select("user_id, users(fcm_token)")
-      .eq("id", donor_id)
-      .single();
-
-    if (donorError || !donor?.users?.fcm_token) {
-      return new Response(
-        JSON.stringify({ error: "Donor FCM token not found" }),
-        { status: 404 }
-      );
+    if (!request_id || !donor_id) {
+      return json({ error: "request_id and donor_id are required" }, 400);
     }
 
-    const fcmToken = donor.users.fcm_token;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-    // Send FCM notification
-    const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `key=${FCM_SERVER_KEY}`,
+    const { data: profile, error: profileError } = await supabase
+      .from("donor_profiles")
+      .select("user_id")
+      .eq("id", donor_id)
+      .maybeSingle();
+    if (profileError || !profile) return json({ error: "Donor not found" }, 404);
+
+    const { data: user, error: userError } = await supabase
+      .from("users")
+      .select("fcm_token")
+      .eq("id", profile.user_id)
+      .maybeSingle();
+    if (userError || !user?.fcm_token) {
+      return json({ error: "Donor FCM token not found" }, 404);
+    }
+
+    const story = typeof patient_story === "string" ? patient_story : "";
+    const result = await sendFcm({
+      token: user.fcm_token,
+      priority: "high",
+      title: `EMERGENCY: ${blood_group} Needed`,
+      body: story
+        ? (story.length > 100 ? `${story.substring(0, 100)}...` : story)
+        : `${hospital_name} needs ${blood_group} blood. You are ${distance_km}km away.`,
+      androidChannelId: "emergency_channel",
+      sound: "emergency",
+      data: {
+        type: "emergency_request",
+        request_id,
+        blood_group,
+        hospital_name,
+        patient_story: story,
+        distance_km,
       },
-      body: JSON.stringify({
-        to: fcmToken,
-        priority: "high",
-        notification: {
-          title: `EMERGENCY: ${blood_group} Needed`,
-          body: patient_story
-            ? `${patient_story.substring(0, 100)}...`
-            : `${hospital_name} needs ${blood_group} blood. You are ${distance_km}km away.`,
-          sound: "emergency",
-          channel_id: "emergency_channel",
-          android_channel_id: "emergency_channel",
-        },
-        data: {
-          type: "emergency_request",
-          request_id,
-          blood_group,
-          hospital_name,
-          patient_story: patient_story || "",
-          distance_km: String(distance_km),
-        },
-        android: {
-          priority: "high",
-          notification: {
-            channel_id: "emergency_channel",
-            sound: "emergency",
-            default_vibrate_timings: true,
-            default_sound: false,
-            icon: "ic_notification",
-            color: "#D32F2F",
-          },
-        },
-      }),
     });
 
-    const fcmResult = await fcmResponse.json();
-
-    return new Response(
-      JSON.stringify({ success: true, fcm: fcmResult }),
-      { headers: { "Content-Type": "application/json" } }
-    );
+    if (!result.ok) {
+      if (isDeadToken(result)) {
+        // Stale token: clear it so we stop targeting a dead device.
+        await supabase.from("users").update({ fcm_token: null }).eq("id", profile.user_id);
+      }
+      return json({ success: false, fcm_error: result.errorCode, fcm: result.raw }, 502);
+    }
+    return json({ success: true, fcm: result.raw });
   } catch (error) {
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500 }
-    );
+    return json({ error: (error as Error).message }, 500);
   }
 });

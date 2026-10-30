@@ -30,17 +30,9 @@ class _OtpScreenState extends State<OtpScreen> {
     final success = await authProvider.verifyOtp(_otpController.text.trim());
 
     if (success && mounted) {
-      // Check if user has a profile
-      final role = await authProvider.getUserRole();
-      if (mounted) {
-        if (role != null) {
-          // Existing user — AuthGate will handle routing
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        } else {
-          // New user — needs to complete registration
-          Navigator.of(context).popUntil((route) => route.isFirst);
-        }
-      }
+      // AuthGate decides what to show next: the role's home, or the
+      // "finish setting up" screen if this account has no profile yet.
+      Navigator.of(context).popUntil((route) => route.isFirst);
     }
   }
 

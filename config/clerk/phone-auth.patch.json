@@ -1,0 +1,6 @@
+{
+  "auth_email": {"required_for_sign_up": false},
+  "auth_username": {"required_for_sign_up": false, "used_for_sign_up": false, "used_for_sign_in": false},
+  "auth_password": {"required": false, "enabled": false},
+  "auth_phone": {"required_for_sign_up": true, "used_for_sign_up": true, "used_for_sign_in": true, "sign_in_strategies": ["phone_code"], "verification_strategies": ["phone_code"], "verify_at_sign_up": true}
+}

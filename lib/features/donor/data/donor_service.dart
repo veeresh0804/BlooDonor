@@ -18,21 +18,26 @@ class DonorService {
     String? emergencyContactPhone,
   }) async {
     try {
-      await _client.from('donor_profiles').upsert({
-        'user_id': userId,
-        'blood_group': bloodGroup.name,
-        'rh_factor': rhFactor.name,
-        'city': 'Hyderabad',
-        'lat': lat,
-        'lng': lng,
-        'radius_km': radiusKm,
-        'availability': true,
-        'dnd_mode': false,
-        'cooldown_active': false,
-        'emergency_contact_name': emergencyContactName,
-        'emergency_contact_phone': emergencyContactPhone,
-        'points': 0,
-      });
+      await _client.from('donor_profiles').upsert(
+        {
+          'user_id': userId,
+          'blood_group': bloodGroup.name,
+          'rh_factor': rhFactor.name,
+          'city': 'Hyderabad',
+          'lat': lat,
+          'lng': lng,
+          'radius_km': radiusKm,
+          'availability': true,
+          'dnd_mode': false,
+          'cooldown_active': false,
+          'emergency_contact_name': emergencyContactName,
+          'emergency_contact_phone': emergencyContactPhone,
+          // NOTE: never write 'points' here — donor_profiles.points is a
+          // cached copy synced from donor_achievements by the database
+          // (see 009_security_hardening.sql). Sending 0 reset it on save.
+        },
+        onConflict: 'user_id', // requires UNIQUE(user_id), added in 009
+      );
     } catch (e) {
       throw ServerException('Failed to save donor profile: $e');
     }

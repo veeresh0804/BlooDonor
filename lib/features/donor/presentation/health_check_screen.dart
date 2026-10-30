@@ -267,14 +267,25 @@ class _HealthCheckScreenState extends State<HealthCheckScreen> {
     );
   }
 
-  void _confirmAcceptance(BuildContext context) {
+  void _confirmAcceptance(BuildContext context) async {
     final donorId = context.read<DonorProvider>().profile?.id;
     if (donorId == null) return;
 
-    context.read<DonorJourneyProvider>().acceptRequest(
+    final recorded = await context.read<DonorJourneyProvider>().acceptRequest(
       requestId: widget.request.id,
       donorId: donorId,
     );
+
+    if (!recorded && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not record your acceptance. Please try again.'),
+          backgroundColor: AppColors.critical,
+        ),
+      );
+      return;
+    }
+    if (!context.mounted) return;
 
     showDialog(
       context: context,

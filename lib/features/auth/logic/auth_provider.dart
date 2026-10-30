@@ -50,8 +50,16 @@ class AuthProvider extends ChangeNotifier {
     _error = null;
     notifyListeners();
 
+    final phone = _phone;
+    if (phone == null) {
+      _error = 'Please request a code first.';
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+
     try {
-      await _authService.verifyOtp(_phone!, token);
+      await _authService.verifyOtp(phone, token);
       _isLoading = false;
       notifyListeners();
       return true;
@@ -80,6 +88,42 @@ class AuthProvider extends ChangeNotifier {
         name: name,
         phone: _phone!,
         role: _selectedRole!,
+        email: email,
+      );
+      _isLoading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = e.toString();
+      _isLoading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Create the profile for a user who is already signed in (OTP verified)
+  /// but has no `users` row — e.g. they used Login instead of Register.
+  Future<bool> completeProfileForCurrentUser({
+    required String name,
+    required UserRole role,
+    String? email,
+  }) async {
+    final phone = _authService.currentPhone;
+    if (phone == null) {
+      _error = 'Could not read your phone number. Please sign out and sign in again.';
+      notifyListeners();
+      return false;
+    }
+
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _authService.createUserProfile(
+        name: name,
+        phone: phone,
+        role: role,
         email: email,
       );
       _isLoading = false;

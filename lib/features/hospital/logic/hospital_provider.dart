@@ -18,27 +18,24 @@ class HospitalProvider extends ChangeNotifier {
   String? get error => _error;
   bool get hasProfile => _profile != null;
 
-  List<BloodRequest> get activeRequests =>
-      _requests.where((r) => r.status == RequestStatus.active).toList();
+  List<BloodRequest> get activeRequests => _requests
+      .where((r) =>
+          r.status == RequestStatus.active ||
+          r.status == RequestStatus.escalating)
+      .toList();
 
   List<BloodRequest> get pastRequests =>
       _requests.where((r) => r.status != RequestStatus.active).toList();
 
   /// Get all leads for a request
   Future<List<Map<String, dynamic>>> getLeads(String requestId) async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
-
+    // Deliberately does NOT touch _isLoading / notifyListeners: this is a pure
+    // fetch for LeadsScreen, and notifying rebuilt every watcher (and could
+    // re-trigger the fetch).
     try {
-      final leads = await _service.getLeads(requestId);
-      _isLoading = false;
-      notifyListeners();
-      return leads;
+      return await _service.getLeads(requestId);
     } catch (e) {
       _error = e.toString();
-      _isLoading = false;
-      notifyListeners();
       return [];
     }
   }
@@ -61,7 +58,8 @@ class HospitalProvider extends ChangeNotifier {
         donationType: donationType,
         units: units,
       );
-      await loadRequests(profile!.id);
+      final hospitalId = _profile?.id;
+      if (hospitalId != null) await loadRequests(hospitalId);
       _isLoading = false;
       notifyListeners();
       return true;
@@ -160,6 +158,8 @@ class HospitalProvider extends ChangeNotifier {
         lng: _profile!.lng,
       );
       await loadRequests(_profile!.id);
+      _isLoading = false;
+      notifyListeners();
       return true;
     } catch (e) {
       _error = e.toString();

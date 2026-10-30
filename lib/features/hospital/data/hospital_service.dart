@@ -3,6 +3,7 @@ import '../../../core/errors/app_exception.dart';
 import '../../../shared/models/enums.dart';
 import '../../../shared/models/blood_request.dart';
 import '../../../shared/models/hospital_profile.dart';
+import '../../../shared/models/parse_utils.dart';
 
 class HospitalService {
   final SupabaseClient _client = Supabase.instance.client;
@@ -52,15 +53,20 @@ class HospitalService {
     required double lng,
   }) async {
     try {
-      await _client.from('hospitals').upsert({
-        'user_id': userId,
-        'hospital_name': hospitalName,
-        'address': address,
-        'city': 'Hyderabad',
-        'lat': lat,
-        'lng': lng,
-        'verified': false,
-      });
+      // Requires a UNIQUE(user_id) constraint (migration 009/011). `verified`
+      // is intentionally omitted: new rows get the column default (false) and
+      // edits no longer un-verify an already-verified hospital.
+      await _client.from('hospitals').upsert(
+        {
+          'user_id': userId,
+          'hospital_name': hospitalName,
+          'address': address,
+          'city': 'Hyderabad',
+          'lat': lat,
+          'lng': lng,
+        },
+        onConflict: 'user_id',
+      );
     } catch (e) {
       throw ServerException('Failed to save hospital profile: $e');
     }
@@ -131,9 +137,11 @@ class HospitalService {
           .eq('hospital_id', hospitalId)
           .order('created_at', ascending: false);
 
-      return (response as List)
-          .map((json) => BloodRequest.fromJson(json))
-          .toList();
+      return parseRows(
+        response as List,
+        BloodRequest.fromJson,
+        label: 'blood request',
+      );
     } catch (e) {
       throw ServerException('Failed to get requests: $e');
     }

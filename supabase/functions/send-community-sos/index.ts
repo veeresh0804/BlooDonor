@@ -1,47 +1,36 @@
-// Supabase Edge Function: Send Community SOS
-// Sends a notification to all donors in Hyderabad via a topic subscription.
+// Supabase Edge Function: Send Community SOS (FCM HTTP v1)
+// Broadcasts to the `hyderabad_donors` topic. Devices must subscribe to that topic
+// (NotificationService.initialize does this).
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { sendFcm } from "../_shared/fcm.ts";
 
-const FCM_SERVER_KEY = Deno.env.get("FCM_SERVER_KEY")!;
-const SOS_TOPIC = "hyderabad_donors"; // All donors should be subscribed to this topic
+const SOS_TOPIC = "hyderabad_donors";
 
 serve(async (req) => {
   try {
     const { request_id, blood_group } = await req.json();
 
-    const fcmResponse = await fetch("https://fcm.googleapis.com/fcm/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `key=${FCM_SERVER_KEY}`,
-      },
-      body: JSON.stringify({
-        to: `/topics/${SOS_TOPIC}`,
-        priority: "normal",
-        notification: {
-          title: `Community SOS: ${blood_group} Needed`,
-          body: `A patient urgently needs ${blood_group} blood in Hyderabad. If you know someone who can help, please open the app to submit their details.`,
-          sound: "default",
-        },
-        data: {
-          type: "community_sos",
-          request_id,
-          blood_group,
-        },
-      }),
+    const result = await sendFcm({
+      topic: SOS_TOPIC,
+      priority: "normal",
+      title: `Community SOS: ${blood_group} Needed`,
+      body:
+        `A patient urgently needs ${blood_group} blood in Hyderabad. If you know someone who can help, please open the app to submit their details.`,
+      sound: "default",
+      data: { type: "community_sos", request_id, blood_group },
     });
 
-    const fcmResult = await fcmResponse.json();
-
     return new Response(
-      JSON.stringify({ success: true, fcm: fcmResult }),
-      { headers: { "Content-Type": "application/json" } }
+      JSON.stringify(result.ok
+        ? { success: true, fcm: result.raw }
+        : { success: false, fcm_error: result.errorCode, fcm: result.raw }),
+      { status: result.ok ? 200 : 502, headers: { "Content-Type": "application/json" } },
     );
   } catch (error) {
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500 }
+      JSON.stringify({ error: (error as Error).message }),
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 });

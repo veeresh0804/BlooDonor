@@ -9,6 +9,7 @@ import '../logic/hospital_provider.dart';
 import 'hospital_profile_setup.dart';
 import 'create_request_screen.dart';
 import 'request_detail_screen.dart';
+import 'request_live_tracker.dart';
 import 'hospital_analytics.dart';
 
 class HospitalHome extends StatefulWidget {
@@ -135,7 +136,7 @@ class _DashboardTab extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => RequestDetailScreen(request: request),
+                  builder: (_) => RequestLiveTracker(request: request),
                 ),
               );
             },
@@ -324,6 +325,18 @@ class _RequestListTile extends StatelessWidget {
     };
 
     return ListTile(
+      onTap: () {
+        final isOpen = request.status == RequestStatus.active ||
+            request.status == RequestStatus.escalating;
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => isOpen
+                ? RequestLiveTracker(request: request)
+                : RequestDetailScreen(request: request),
+          ),
+        );
+      },
       leading: Container(
         width: 48,
         height: 48,

@@ -1,4 +1,5 @@
 import 'enums.dart';
+import 'parse_utils.dart';
 
 class DonorResponse {
   final String id;
@@ -34,7 +35,12 @@ class DonorResponse {
       id: json['id'],
       requestId: json['request_id'],
       donorId: json['donor_id'],
-      status: DonorResponseStatus.values.byName(json['status']),
+      status: parseEnumOr(
+        DonorResponseStatus.values,
+        json['status'],
+        DonorResponseStatus.notified,
+        field: 'donor_responses.status',
+      ),
       isCooldownOverride: json['is_cooldown_override'] ?? false,
       cooldownDaysRemaining: json['cooldown_days_remaining'],
       healthCheckPassed: json['health_check_passed'],

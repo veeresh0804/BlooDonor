@@ -46,6 +46,13 @@ app.*.map.json
 
 # Environment secrets
 .env
+.env.*
+!.env.example
+
+# Convex/Node local dependencies and test output
+node_modules/
+.convex/
+*.tsbuildinfo
 
 # Agent and editor metadata
 .agents/

@@ -62,19 +62,16 @@ class DonorAchievementsService {
     }
   }
 
-  /// Get today's heroes (donors who donated today) — city-wide
+  /// Get today's heroes (donors who donated today) — city-wide.
+  /// Served by the SECURITY DEFINER rpc get_todays_heroes (see
+  /// 009_security_hardening.sql) because base-table reads are
+  /// restricted to owners + matched parties.
   Future<List<Map<String, dynamic>>> getTodaysHeroes() async {
     try {
-      final today = DateTime.now();
-      final startOfDay = DateTime(today.year, today.month, today.day);
-
-      final response = await _client
-          .from('donor_responses')
-          .select('donor_id, accepted_at, blood_requests(blood_group, rh_factor)')
-          .eq('status', 'donated')
-          .gte('accepted_at', startOfDay.toIso8601String())
-          .order('accepted_at', ascending: false)
-          .limit(20);
+      final response = await _client.rpc(
+        'get_todays_heroes',
+        params: {'p_limit': 20},
+      );
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       // Silently return empty on failure

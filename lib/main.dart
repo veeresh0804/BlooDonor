@@ -19,6 +19,14 @@ import 'features/auth/presentation/auth_gate.dart';
 // Uncomment if you have firebase_options.dart
 // import 'firebase_options.dart';
 
+/// True when a .env value looks like a real key rather than an example
+/// placeholder. Catches the `your_*_here` values shipped in .env.example
+/// as well as `placeholder` and empty values (all mean: run in demo mode).
+bool _isConfigured(String value) {
+  final v = value.trim();
+  return v.isNotEmpty && !v.contains('placeholder') && !v.startsWith('your_');
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -40,13 +48,12 @@ void main() async {
     }
   }
 
-  // Initialize Supabase (skip if placeholder keys)
+  // Initialize Supabase (skip if keys are missing or still placeholders).
+  // NOTE: .env is bundled into the app — only the public anon key belongs
+  // here. Never put the service-role key in .env.
   final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
   final supabaseKey = dotenv.env['SUPABASE_ANON_KEY'] ?? '';
-  if (supabaseUrl.isNotEmpty &&
-      !supabaseUrl.contains('placeholder') &&
-      supabaseKey.isNotEmpty &&
-      !supabaseKey.contains('placeholder')) {
+  if (_isConfigured(supabaseUrl) && _isConfigured(supabaseKey)) {
     try {
       await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
     } catch (e) {

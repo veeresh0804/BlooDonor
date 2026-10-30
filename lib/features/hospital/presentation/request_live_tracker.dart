@@ -23,17 +23,48 @@ class _RequestLiveTrackerState extends State<RequestLiveTracker> {
   bool _isLoading = true;
   RealtimeChannel? _channel;
 
+  /// Latest copy of the request. widget.request is a snapshot from when the
+  /// screen opened, so units_fulfilled / status would otherwise go stale.
+  late BloodRequest _request;
+
+  bool get _isOpen =>
+      _request.status == RequestStatus.active ||
+      _request.status == RequestStatus.escalating;
+
   @override
   void initState() {
     super.initState();
-    _loadResponses();
+    _request = widget.request;
+    _refresh();
     _subscribeToUpdates();
   }
 
   @override
   void dispose() {
-    _channel?.unsubscribe();
+    final channel = _channel;
+    if (channel != null) {
+      // removeChannel (not just unsubscribe) frees the client-side channel.
+      Supabase.instance.client.removeChannel(channel);
+    }
     super.dispose();
+  }
+
+  Future<void> _refresh() async {
+    await Future.wait([_loadResponses(), _reloadRequest()]);
+  }
+
+  Future<void> _reloadRequest() async {
+    try {
+      final row = await Supabase.instance.client
+          .from('blood_requests')
+          .select()
+          .eq('id', widget.request.id)
+          .maybeSingle();
+      if (row == null || !mounted) return;
+      setState(() => _request = BloodRequest.fromJson(row));
+    } catch (e) {
+      debugPrint('Request refresh failed: $e');
+    }
   }
 
   Future<void> _loadResponses() async {
@@ -44,11 +75,13 @@ class _RequestLiveTrackerState extends State<RequestLiveTracker> {
           .eq('request_id', widget.request.id)
           .order('created_at', ascending: true);
 
+      if (!mounted) return;
       setState(() {
         _donorResponses = List<Map<String, dynamic>>.from(response);
         _isLoading = false;
       });
     } catch (e) {
+      if (!mounted) return;
       setState(() => _isLoading = false);
     }
   }
@@ -65,14 +98,16 @@ class _RequestLiveTrackerState extends State<RequestLiveTracker> {
             column: 'request_id',
             value: widget.request.id,
           ),
-          callback: (payload) => _loadResponses(),
+          // Any response change (incl. 'donated') can also change the request's
+          // units_fulfilled/status, so refresh both.
+          callback: (payload) => _refresh(),
         )
         .subscribe();
   }
 
   @override
   Widget build(BuildContext context) {
-    final request = widget.request;
+    final request = _request;
     final urgencyColor = switch (request.urgency) {
       Urgency.critical => AppColors.critical,
       Urgency.urgent => AppColors.urgent,
@@ -104,21 +139,23 @@ class _RequestLiveTrackerState extends State<RequestLiveTracker> {
             },
             itemBuilder: (context) => [
               const PopupMenuItem(value: 'leads', child: Text('View Leads')),
-              const PopupMenuDivider(),
-              const PopupMenuItem(
-                value: 'fulfill',
-                child: Text('Mark Fulfilled'),
-              ),
-              const PopupMenuItem(
-                value: 'cancel',
-                child: Text('Cancel Request'),
-              ),
+              if (_isOpen) ...[
+                const PopupMenuDivider(),
+                const PopupMenuItem(
+                  value: 'fulfill',
+                  child: Text('Mark Fulfilled'),
+                ),
+                const PopupMenuItem(
+                  value: 'cancel',
+                  child: Text('Cancel Request'),
+                ),
+              ],
             ],
           ),
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _loadResponses,
+        onRefresh: _refresh,
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
@@ -193,6 +230,23 @@ class _RequestLiveTrackerState extends State<RequestLiveTracker> {
               ),
             ),
             const SizedBox(height: 20),
+
+            if (!_isOpen) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.normal.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  'This request is ${request.status.name}.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
 
             // Blood drop fill animation
             _BloodDropProgress(
@@ -287,6 +341,7 @@ class _RequestLiveTrackerState extends State<RequestLiveTracker> {
             else
               ..._donorResponses.map(
                 (response) => _DonorResponseCard(
+                  canConfirm: _isOpen,
                   response: response,
                   onConfirmDonation: () => _confirmDonation(response),
                 ),
@@ -300,7 +355,11 @@ class _RequestLiveTrackerState extends State<RequestLiveTracker> {
   void _confirmDonation(Map<String, dynamic> response) {
     final donorProfile = response['donor_profiles'];
     final donorId = donorProfile?['id'] as String?;
-    final donorName = donorProfile?['user_id'] as String? ?? 'Donor';
+    final bloodGroup = donorProfile?['blood_group'] as String?;
+    final rh = donorProfile?['rh_factor'] == 'positive' ? '+' : '-';
+    // Donor identity is anonymous to the hospital here; show blood group, never a UUID.
+    final donorName =
+        bloodGroup != null ? '${bloodGroup.toUpperCase()}$rh donor' : 'Donor';
 
     if (donorId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -502,8 +561,10 @@ class _BloodDropProgress extends StatelessWidget {
 class _DonorResponseCard extends StatelessWidget {
   final Map<String, dynamic> response;
   final VoidCallback onConfirmDonation;
+  final bool canConfirm;
 
   const _DonorResponseCard({
+    required this.canConfirm,
     required this.response,
     required this.onConfirmDonation,
   });
@@ -544,7 +605,7 @@ class _DonorResponseCard extends StatelessWidget {
             ],
           ],
         ),
-        trailing: status == 'arrived' || status == 'confirmed'
+        trailing: canConfirm && (status == 'arrived' || status == 'confirmed')
             ? ElevatedButton(
                 onPressed: onConfirmDonation,
                 style: ElevatedButton.styleFrom(

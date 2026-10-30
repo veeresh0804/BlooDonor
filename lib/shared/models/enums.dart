@@ -1,3 +1,6 @@
+// Enum names are serialized with .name and must match the database contract.
+// ignore_for_file: constant_identifier_names
+
 enum UserRole { hospital, donor, ngo }
 
 enum BloodGroup { a, b, ab, o }

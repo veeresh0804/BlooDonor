@@ -1,4 +1,5 @@
 import 'enums.dart';
+import 'parse_utils.dart';
 
 class BloodRequest {
   final String id;
@@ -52,10 +53,22 @@ class BloodRequest {
       hospitalId: json['hospital_id'],
       bloodGroup: BloodGroup.values.byName(json['blood_group']),
       rhFactor: RhFactor.values.byName(json['rh_factor']),
-      units: json['units'],
+      units: json['units'] ?? 1,
       unitsFulfilled: json['units_fulfilled'] ?? 0,
-      urgency: Urgency.values.byName(json['urgency']),
-      status: RequestStatus.values.byName(json['status']),
+      urgency: parseEnumOr(
+        Urgency.values,
+        json['urgency'],
+        Urgency.urgent,
+        field: 'blood_requests.urgency',
+      ),
+      // Unknown status is treated as active so the request stays visible; the
+      // server-side guards still decide what actions are allowed.
+      status: parseEnumOr(
+        RequestStatus.values,
+        json['status'],
+        RequestStatus.active,
+        field: 'blood_requests.status',
+      ),
       city: json['city'] ?? 'Hyderabad',
       lat: json['lat']?.toDouble(),
       lng: json['lng']?.toDouble(),

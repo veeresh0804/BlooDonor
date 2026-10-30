@@ -4,6 +4,7 @@ import '../../../config/theme/app_theme.dart';
 import '../../../config/constants/app_constants.dart';
 import '../../../shared/models/enums.dart';
 import '../logic/hospital_provider.dart';
+import 'rate_donor_screen.dart';
 
 class ConfirmDonationScreen extends StatefulWidget {
   final String donorId;
@@ -173,21 +174,56 @@ class _ConfirmDonationScreenState extends State<ConfirmDonationScreen> {
       units: _units,
     );
 
+    if (!success && mounted) {
+      // Previously a failed confirm was silent. It now also covers the server
+      // rejecting a confirm because the request is no longer active.
+      final err = context.read<HospitalProvider>().error;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            err != null && err.toLowerCase().contains('not active')
+                ? 'This request is already fulfilled or cancelled.'
+                : 'Could not confirm donation. Please try again.',
+          ),
+          backgroundColor: AppColors.critical,
+        ),
+      );
+      return;
+    }
+
     if (success && mounted) {
       showDialog(
         context: context,
-        builder: (context) => AlertDialog(
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
           title: const Text('Donation Confirmed!'),
-          content: Text(
-            '${widget.donorName}\'s donation has been recorded. '
-            'A digital certificate will be generated and the donor will be notified.',
-          ),
+          content: Text('${widget.donorName}\'s donation has been recorded.'),
           actions: [
-            ElevatedButton(
+            TextButton(
               onPressed: () {
-                Navigator.of(context).popUntil((route) => route.isFirst);
+                // Close dialog, then return to the tracker (not the app root)
+                // so other donors can still be confirmed.
+                Navigator.of(dialogContext).pop();
+                if (mounted) Navigator.of(context).pop();
               },
               child: const Text('Done'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                if (!mounted) return;
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => RateDonorScreen(
+                      donorId: widget.donorId,
+                      donorName: widget.donorName,
+                      requestId: widget.requestId,
+                    ),
+                  ),
+                );
+                if (mounted) Navigator.of(context).pop();
+              },
+              child: const Text('Rate Donor'),
             ),
           ],
         ),

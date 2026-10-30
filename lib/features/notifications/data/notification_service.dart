@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -11,6 +12,10 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class NotificationService {
+  /// Must match SOS_TOPIC in supabase/functions/send-community-sos.
+  static const String communitySosTopic = 'hyderabad_donors';
+
+  StreamSubscription<String>? _tokenRefreshSub;
   final FirebaseMessaging _fcm = FirebaseMessaging.instance;
   final SupabaseClient _client = Supabase.instance.client;
 
@@ -38,8 +43,17 @@ class NotificationService {
       await _saveTokenToServer(token);
     }
 
-    // Listen for token refresh
-    _fcm.onTokenRefresh.listen(_saveTokenToServer);
+    // Listen for token refresh (cancel any previous listener first)
+    await _tokenRefreshSub?.cancel();
+    _tokenRefreshSub = _fcm.onTokenRefresh.listen(_saveTokenToServer);
+
+    // Community SOS is broadcast to this topic. subscribeToTopic is not
+    // supported on web; Firebase is not initialised there anyway.
+    try {
+      await _fcm.subscribeToTopic(communitySosTopic);
+    } catch (e) {
+      debugPrint('Topic subscribe failed: $e');
+    }
 
     // Configure foreground presentation
     await _fcm.setForegroundNotificationPresentationOptions(
@@ -57,7 +71,7 @@ class NotificationService {
 
       await _client.from('users').update({'fcm_token': token}).eq('id', userId);
     } catch (e) {
-      // Silent fail — token will be refreshed
+      debugPrint('FCM token save failed: $e');
     }
   }
 
@@ -71,46 +85,5 @@ class NotificationService {
   /// Check if app was opened from a notification
   Future<RemoteMessage?> getInitialMessage() async {
     return await _fcm.getInitialMessage();
-  }
-
-  /// Send emergency notification via Supabase Edge Function
-  Future<void> sendEmergencyNotification({
-    required String requestId,
-    required String donorId,
-    required String bloodGroup,
-    required String hospitalName,
-    required String patientStory,
-    required int distanceKm,
-  }) async {
-    try {
-      await _client.functions.invoke(
-        'send-emergency-notification',
-        body: {
-          'request_id': requestId,
-          'donor_id': donorId,
-          'blood_group': bloodGroup,
-          'hospital_name': hospitalName,
-          'patient_story': patientStory,
-          'distance_km': distanceKm,
-        },
-      );
-    } catch (e) {
-      throw NotificationException('Failed to send notification: $e');
-    }
-  }
-
-  /// Send resolved notification to all notified donors
-  Future<void> sendResolvedNotification({
-    required String requestId,
-    required List<String> donorIds,
-  }) async {
-    try {
-      await _client.functions.invoke(
-        'send-resolved-notification',
-        body: {'request_id': requestId, 'donor_ids': donorIds},
-      );
-    } catch (e) {
-      throw NotificationException('Failed to send resolved notification: $e');
-    }
   }
 }

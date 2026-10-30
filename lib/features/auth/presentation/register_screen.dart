@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../config/theme/app_theme.dart';
 import '../../../shared/models/enums.dart';
 import '../../../shared/widgets/loading_overlay.dart';
+import '../../../core/utils/phone_utils.dart';
 import '../logic/auth_provider.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -39,7 +40,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     final authProvider = context.read<AuthProvider>();
     authProvider.setRole(_selectedRole!);
 
-    final phone = '+91${_phoneController.text.trim()}';
+    final phone = normalizeIndianPhone(_phoneController.text);
     final success = await authProvider.sendOtp(phone);
 
     if (success && mounted) {
@@ -132,16 +133,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Phone number is required';
-                    }
-                    final cleaned = value.replaceAll(RegExp(r'[\s\-\+]'), '');
-                    if (cleaned.length < 10) {
-                      return 'Enter a valid phone number';
-                    }
-                    return null;
-                  },
+                  validator: validateIndianPhone,
                 ),
                 const SizedBox(height: 16),
 

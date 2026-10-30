@@ -1,4 +1,5 @@
 import 'enums.dart';
+import 'parse_utils.dart';
 
 class DonorProfile {
   final String id;
@@ -63,9 +64,10 @@ class DonorProfile {
       lastDonationDate: json['last_donation_date'] != null
           ? DateTime.parse(json['last_donation_date'])
           : null,
-      donationTypeLast: json['donation_type_last'] != null
-          ? DonationType.values.byName(json['donation_type_last'])
-          : null,
+      donationTypeLast: tryParseEnum(
+        DonationType.values,
+        json['donation_type_last'],
+      ),
       cooldownEndDate: json['cooldown_end_date'] != null
           ? DateTime.parse(json['cooldown_end_date'])
           : null,

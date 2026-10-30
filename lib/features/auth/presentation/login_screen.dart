@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../config/theme/app_theme.dart';
 import '../../../config/constants/app_constants.dart';
 import '../../../shared/widgets/loading_overlay.dart';
+import '../../../core/utils/phone_utils.dart';
 import '../logic/auth_provider.dart';
 import 'otp_screen.dart';
 import 'register_screen.dart';
@@ -24,18 +25,13 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  String? _validatePhone(String? value) {
-    if (value == null || value.isEmpty) return 'Phone number is required';
-    final cleaned = value.replaceAll(RegExp(r'[\s\-\+]'), '');
-    if (cleaned.length < 10) return 'Enter a valid phone number';
-    return null;
-  }
+  String? _validatePhone(String? value) => validateIndianPhone(value);
 
   Future<void> _sendOtp() async {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = context.read<AuthProvider>();
-    final phone = '+91${_phoneController.text.trim()}';
+    final phone = normalizeIndianPhone(_phoneController.text);
 
     final success = await authProvider.sendOtp(phone);
     if (success && mounted) {

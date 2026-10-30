@@ -4,9 +4,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../shared/models/enums.dart';
 import '../../../config/theme/app_theme.dart';
 import '../../../core/utils/seed_data.dart';
-import '../logic/auth_provider.dart';
 import '../logic/demo_provider.dart';
 import 'login_screen.dart';
+import 'role_router.dart';
 import '../../hospital/presentation/hospital_home.dart';
 import '../../donor/presentation/donor_home.dart';
 
@@ -37,29 +37,8 @@ class AuthGate extends StatelessWidget {
           return const LoginScreen();
         }
 
-        // User is authenticated — check role for routing
-        return FutureBuilder<UserRole?>(
-          future: context.read<AuthProvider>().getUserRole(),
-          builder: (context, roleSnapshot) {
-            if (roleSnapshot.connectionState == ConnectionState.waiting) {
-              return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
-              );
-            }
-
-            final role = roleSnapshot.data;
-
-            if (role == null) {
-              return const LoginScreen();
-            }
-
-            return switch (role) {
-              UserRole.hospital => const HospitalHome(),
-              UserRole.donor => const DonorHome(),
-              UserRole.ngo => const DonorHome(),
-            };
-          },
-        );
+        // Signed in: RoleRouter resolves the role (or profile completion / retry).
+        return const RoleRouter();
       },
     );
   }

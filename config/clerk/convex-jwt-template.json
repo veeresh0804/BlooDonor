@@ -1,0 +1,10 @@
+{
+  "name": "convex",
+  "claims": {
+    "aud": "convex",
+    "phone_number": "{{user.primary_phone_number}}",
+    "phone_number_verified": "{{user.phone_number_verified}}"
+  },
+  "lifetime": 60,
+  "allowed_clock_skew": 5
+}

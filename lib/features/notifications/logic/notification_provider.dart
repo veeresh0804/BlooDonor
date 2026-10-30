@@ -9,10 +9,13 @@ import '../../matching/logic/matching_provider.dart';
 import '../data/notification_service.dart';
 
 class NotificationProvider extends ChangeNotifier {
-  final NotificationService _service = NotificationService();
+  // Construct inside initialize's try/catch when Firebase may be unavailable.
+  late final NotificationService _service = NotificationService();
 
   RemoteMessage? _lastMessage;
   bool _isInitialized = false;
+  bool _isInitializing = false;
+  bool _attempted = false;
   String? _error;
 
   RemoteMessage? get lastMessage => _lastMessage;
@@ -21,6 +24,10 @@ class NotificationProvider extends ChangeNotifier {
 
   /// Initialize notification system
   Future<void> initialize() async {
+    // Idempotent: AuthGate may call this on every rebuild.
+    if (_isInitialized || _isInitializing || _attempted) return;
+    _isInitializing = true;
+    _attempted = true; // one attempt per app session; avoids re-prompt loops
     try {
       await _service.initialize();
       _isInitialized = true;
@@ -51,6 +58,8 @@ class NotificationProvider extends ChangeNotifier {
     } catch (e) {
       _error = e.toString();
       notifyListeners();
+    } finally {
+      _isInitializing = false;
     }
   }
 
@@ -136,30 +145,6 @@ class NotificationProvider extends ChangeNotifier {
       case 'thank_you':
         // TODO: Navigate to a thank you screen or show a special dialog
         break;
-    }
-  }
-
-  /// Send emergency notification
-  Future<void> sendEmergency({
-    required String requestId,
-    required String donorId,
-    required String bloodGroup,
-    required String hospitalName,
-    required String patientStory,
-    required int distanceKm,
-  }) async {
-    try {
-      await _service.sendEmergencyNotification(
-        requestId: requestId,
-        donorId: donorId,
-        bloodGroup: bloodGroup,
-        hospitalName: hospitalName,
-        patientStory: patientStory,
-        distanceKm: distanceKm,
-      );
-    } catch (e) {
-      _error = e.toString();
-      notifyListeners();
     }
   }
 

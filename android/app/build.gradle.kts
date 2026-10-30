@@ -42,3 +42,9 @@ android {
 flutter {
     source = "../.."
 }
+
+// Apply Google Services only once google-services.json is present, so the
+// project still builds (without push) before Firebase is configured.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
